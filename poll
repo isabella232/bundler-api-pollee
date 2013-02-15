@@ -1,0 +1,50 @@
+#!/usr/bin/env ruby
+
+require 'net/http'
+require 'thread'
+require 'uri'
+
+require 'metriks'
+require 'metriks/reporter/logger'
+require 'metriks/reporter/librato_metrics'
+
+user  = ENV['LIBRATO_METRICS_USER']
+token = ENV['LIBRATO_METRICS_TOKEN']
+raise 'Librato user and token required' unless user && token
+
+on_error = ->(e) do STDOUT.puts("LibratoMetrics: #{ e.message }") end
+opts     = { on_error: on_error }
+Metriks::Reporter::LibratoMetrics.new(user, token, opts).start
+
+hosts    = { 'unicorn' => 'bundler-api.herokuapp.com',
+             'thin'    => 'bundler-api-thin.herokuapp.com' }
+paths    = %w( /api/v1/dependencies?gems=rake,abstract,activesupport,builder,i18n,activemodel,erubis,rack,rack-mount,rack-test,tzinfo,actionpack,mime-types,polyglot,treetop,mail,actionmailer,arel,activerecord,activeresource,pg,thor,railties,rails )
+interval = (ENV['INTERVAL'] || 5).to_i
+
+begin
+  threads = []
+  mutex   = Mutex.new
+
+  hosts.each do |name, host|
+    paths.each do |path|
+      uri = URI.parse("http://#{host}#{path}")
+      threads << Thread.new(name, uri) {|name, uri|
+        response = nil
+        mutex.synchronize do
+          $stdout.puts "pinging #{name} #{uri.to_s}"
+        end
+        http = Net::HTTP.new(uri.host, uri.port)
+        Metriks.timer("#{name}.request").time do
+          response, data = http.get(uri.request_uri)
+        end
+      }
+    end
+  end
+
+  threads.each(&:join)
+  $stdout.puts "sleeping for #{interval} seconds"
+  sleep interval
+rescue Interrupt
+  $stdout.puts 'Interrupted'
+  exit
+end while true
