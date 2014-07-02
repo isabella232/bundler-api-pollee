@@ -18,7 +18,10 @@ on_error = ->(e) do STDOUT.puts("LibratoMetrics: #{ e.message }") end
 opts     = { on_error: on_error }
 Metriks::Reporter::LibratoMetrics.new(user, token, opts).start
 
-hosts    = { 'production' => 'bundler-api.herokuapp.com' }
+hosts    = {
+  'production' => 'bundler-api.herokuapp.com',
+  'rubygems_proxy' => 'rubygems.org'
+}
 paths    = %w( /api/v1/dependencies?gems=rake,abstract,activesupport,builder,i18n,activemodel,erubis,rack,rack-mount,rack-test,tzinfo,actionpack,mime-types,polyglot,treetop,mail,actionmailer,arel,activerecord,activeresource,pg,thor,railties,rails )
 interval = (ENV['INTERVAL'] || 5).to_i
 
